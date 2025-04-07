@@ -7,7 +7,7 @@ namespace aiter{
 #define MD_NAME "asm_mla_decode_fwd"
 
 /**
- * @brief Performs forward pass decoding for Multi-head Linear Attention (MLA) using assembly-optimized implementation
+ * @brief Performs forward pass decoding for Multi-head Latent Attention (MLA) using assembly-optimized implementation
  * 
  * This function executes the forward pass of MLA decoding with paged key-value cache support.
  * It dynamically compiles and runs optimized assembly code for the specific configuration.
