@@ -165,6 +165,7 @@ def checkAllclose(a, b, rtol=1e-2, atol=1e-2, msg='', printNum=8):
 
     isClose = torch.isclose(a, b, rtol=rtol, atol=atol)
     mask = ~isClose
+
     if isClose.all():
         logger.info(f'{msg}[checkAllclose {atol=} {rtol=} passed~]')
         return True
@@ -181,6 +182,7 @@ def checkAllclose(a, b, rtol=1e-2, atol=1e-2, msg='', printNum=8):
            {b[mask][:printNum]}
     delta:
            {delta[:printNum]}''')
+
         else:
             logger.info(
                 f'''{msg}[checkAllclose {atol=} {rtol=} waring!] a and b results are not all close''')

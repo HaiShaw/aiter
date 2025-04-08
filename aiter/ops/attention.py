@@ -117,8 +117,8 @@ def mla_stage1_asm_fwd(
     splitLse: torch.Tensor
 ): ...
 
-@compile_ops("module_mla_ck")
-def mla_decode_fwd_ck(
+@compile_ops("module_mla_hip")
+def mla_decode_fwd_hip(
     # [batch_size, num_heads, kv_lora_rank + qk_rope_head_dim]
     Q: torch.Tensor,
     # [num_page * page_size, num_kv_heads, kv_lora_rank + qk_rope_head_dim]
@@ -135,4 +135,4 @@ def mla_decode_fwd_ck(
     # [batch_size]
     kv_last_page_lens: torch.Tensor,
     softmax_scale: float
-): ...
+) -> torch.Tensor: ...

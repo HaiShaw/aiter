@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 import aiter
 from aiter.ops.triton import decode_mla
-from aiter.test_common import checkAllclose, benchmark, run_perftest
+from aiter.test_common import checkAllclose, benchmark, run_perftest,perftest
 from aiter.test_mha_common import attention_ref
 from einops import rearrange
 
@@ -13,13 +13,36 @@ torch.set_default_device('cuda')
 torch.set_printoptions(sci_mode=False)
 
 
+@perftest()
+def run_aiter_hip(q,
+            kv_buffer,
+            kv_indptr,
+            kv_indices,
+            kv_last_page_lens,
+            v_head_dim,
+            sm_scale,
+            v_buffer=None,
+            out_ck=None):
+    return aiter.mla_decode_fwd_hip(
+            q,                # torch.Tensor
+            kv_buffer,                # torch.Tensor
+            v_buffer,                # Optional[Tensor] or None
+            out_ck,             # Optional[Tensor] for output buffer
+            v_head_dim,           # int
+            kv_indptr,        # torch.Tensor
+            kv_indices,       # torch.Tensor
+            kv_last_page_lens,# torch.Tensor
+            sm_scale          # float
+    )
+
 @benchmark()
 def test_mla(ctx_lens, batch_size, nhead,
              kv_lora_rank,
              qk_nope_head_dim, qk_rope_head_dim,
              v_head_dim,
              dtype, kvtype, page_size, num_kv_splits):
-    kv_max_sz = 65536  # calculated by rest of mem after weight loaded in frameworks
+    #kv_max_sz = 65536  # calculated by rest of mem after weight loaded in frameworks
+    kv_max_sz = 1
     num_page = (kv_max_sz+page_size-1)//page_size
 
     print(f"num_page: {num_page}")
@@ -84,8 +107,13 @@ def test_mla(ctx_lens, batch_size, nhead,
     )
 
     print(f"seq_lens.shape: {seq_lens.shape}")
+    print(f"{seq_lens=}")
+
     print(f"kv_indptr.shape: {kv_indptr.shape}")
+    print(f"{kv_indptr=}")
+
     print(f"kv_indices.shape: {kv_indices.shape}")
+    print(f"{kv_indices=}")
 
     _, us_ref = run_perftest(decode_mla.decode_attention_fwd,
                              q,
@@ -105,6 +133,8 @@ def test_mla(ctx_lens, batch_size, nhead,
 
     kv_last_page_lens = torch.ones(batch_size, dtype=torch.int)
     print(f"kv_last_page_lens.shape: {kv_last_page_lens.shape}")
+    print(f"{kv_last_page_lens=}")
+
     out_asm = torch.empty(
         (batch_size, nhead,  v_head_dim), dtype=dtype).fill_(-1)
     print(f"out_asm.shape: {out_asm.shape}")
@@ -121,24 +151,22 @@ def test_mla(ctx_lens, batch_size, nhead,
                                                    sm_scale,
                                                    )
 
-    out_ck = torch.empty(
-        (batch_size, nhead,  v_head_dim), dtype=dtype).fill_(-1)
-    print(f"out_ck.shape: {out_ck.shape}")
+    out_hip, us_hip = run_aiter_hip(
+            q,
+            kv_buffer.view(num_page,
+                            page_size,
+                            nhead_kv,
+                            qk_head_dim),
+            kv_indptr,
+            kv_indices,
+            kv_last_page_lens,
+            v_head_dim,
+            sm_scale
+        )
+    out_hip = out_hip[:, :, :512]
 
-    _, us_ck = run_perftest(aiter.mla_decode_fwd_ck,
-                            q,
-                            kv_buffer.view(num_page,
-                                            page_size,
-                                            nhead_kv,
-                                            qk_head_dim),
-                            None,
-                            out_ck,
-                            v_head_dim,
-                            kv_indptr,
-                            kv_indices,
-                            kv_last_page_lens,
-                            sm_scale
-                            )
+    #print("out_ref[0,0,:512] =", out_ref[0, 0, :512])
+    #print("out_ck[0,0,:512] =", out_ck[0, 0, :512])
 
     #print(f'{out_asm.view(batch_size, -1)=}')
     #checkAllclose(logits_ref, attn_logits,
@@ -148,8 +176,8 @@ def test_mla(ctx_lens, batch_size, nhead,
     checkAllclose(out_ref, out_asm,
                   msg=f'attn_out    [golden vs aiter_asm]:{us_ref:.2f} us vs {us_asm:.2f} us......')
 
-    checkAllclose(out_ref, out_ck,
-                  msg=f'attn_out    [golden vs aiter_ck]:{us_ref:.2f} us vs {us_ck:.2f} us......')
+    checkAllclose(out_ref, out_hip,
+                  msg=f'attn_out    [golden vs aiter_ck]:{us_ref:.2f} us vs {us_hip:.2f} us......', printNum=8)
 
     return {'triton': us_ref,
             'asm': us_asm}
@@ -160,12 +188,12 @@ kv_lora_rank = 512
 qk_nope_head_dim = 128
 qk_rope_head_dim = 64
 v_head_dim = 128
-nhead = 16  # 128/TP8
+nhead = 1  # 128/TP8
 block_size = 1
 num_kv_splits = 16  # don't why but sglang force 16.... for triton
 for dtype, kvtype in [(torch.bfloat16, torch.bfloat16)]:
-    for ctx_len in [3200][:]:
-        for batch_size in [256][:]:
+    for ctx_len in [10][:]:
+        for batch_size in [1][:]:
             ret = test_mla(ctx_len, batch_size, nhead,
                            kv_lora_rank,
                            qk_nope_head_dim, qk_rope_head_dim,

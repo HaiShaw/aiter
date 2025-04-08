@@ -3,9 +3,9 @@
 
 #include <torch/extension.h>
 
-void mla_decode_fwd_ck(torch::Tensor &Q,    //   [batch_size, num_heads, kv_lora_rank + qk_rope_head_dim]
-    torch::Tensor &K,                       //   [num_page * page_size, num_kv_heads, kv_lora_rank + qk_rope_head_dim]
-    std::optional<torch::Tensor> &v_,        //   [num_page * page_size, num_kv_heads, v_head_dim]
+torch::Tensor mla_decode_fwd_hip(torch::Tensor &Q,    //   [batch_size, num_heads, kv_lora_rank + qk_rope_head_dim]
+    torch::Tensor &K,                       //   [num_page, page_size, num_kv_heads, kv_lora_rank + qk_rope_head_dim]
+    std::optional<torch::Tensor> &v_,        //   [num_page, page_size, num_kv_heads, v_head_dim]
     std::optional<torch::Tensor> &out_,        //   [batch_size, num_heads, v_head_dim]
     int head_size_v,
     torch::Tensor &kv_indptr,               //   [batch_size+1]
@@ -16,7 +16,7 @@ void mla_decode_fwd_ck(torch::Tensor &Q,    //   [batch_size, num_heads, kv_lora
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("mla_decode_fwd_ck", &mla_decode_fwd_ck, "mla_decode_fwd_ck",
+    m.def("mla_decode_fwd_hip", &mla_decode_fwd_hip, "mla_decode_fwd_hip",
         py::arg("Q"),
         py::arg("K"),
         py::arg("v_") = std::nullopt,
